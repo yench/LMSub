@@ -4,7 +4,7 @@ R code for "Dynamic prediction by landmarking with data from cohort subsampling 
 ## Simulated data sets
 Examples of data used in the simulation study (Section 3). Each subject has one row for each landmark time he/she is still at risk.
 - fuldat.csv: Full cohort data for training. This dataset is used to run full cohort and IPW (with subsetting) landmark analyses. 
-- nccdat.csv: NCC data for training. This dataset is used to run conditional analyses. 
+- nccdat.csv: NCC data for training. This dataset is used to run conditional likelihood analyses. 
 - valdat.csv: validation data.
 
 ## Landmarking analyses
