@@ -60,7 +60,7 @@ fuldat0[ , nriskZ3 := rank(-T.obs, ties.method="max"), by=Z3] # number at risk a
 fuldat0[ , term := ifelse(status==1, 1 - as.integer(matchedset.size>=mctrl)*mctrl/matchedset.size, 1)]
 setorder(fuldat0, T.obs)
 
-## Weights for IPW-SRS
+## Weights for IPW-RS
 for (jj in seq_along(landmark.time)) {
   fuldat0[T.obs>=landmark.time[jj], paste0("wgt", jj) := unlist(lapply(.I, function(i){
     if (status[i]==1) {return(1)
@@ -73,13 +73,13 @@ for (jj in seq_along(landmark.time)) {
 fuldat0[ , wgt.ind := wgt1]
 
 # Merge IPW weights back with full cohort data
-fuldat0 = melt(fuldat0, id.vars=c("id", "nrisk", "nriskZ3", "wgt.ind"), value.name="wgt.srs", 
+fuldat0 = melt(fuldat0, id.vars=c("id", "nrisk", "nriskZ3", "wgt.ind"), value.name="wgt.rs", 
                measure.vars=paste0("wgt", 1:n.landmark.time), na.rm=TRUE)
 fuldat0[ , j := as.integer(substr(variable, 4, 5))]
 fuldat0[ , variable := NULL]
 fuldat = fuldat0[fuldat, on=.(id, j)]
 
-# Find the maximum case time that a control is sampled (for IPW-SRS)
+# Find the maximum case time that a control is sampled (for IPW-RS)
 nccdat[ , T.case := min(T.obs), by=.(matched.id)]
 maxTcase = nccdat[ , .(max.T.case = max(T.case)), keyby=.(id)]
 fuldat[maxTcase, max.T.case := max.T.case, on=.(id)]
@@ -92,51 +92,51 @@ fuldat[ , ind.ncc := (id %in% nccid)]
 nccdat[fuldat[status==1, ], `:=` (nrisk=nrisk, nriskZ3=nriskZ3), on=.(T.case=T.obs, j)]
 
 # Create matrices for storing estimates
-betaful = betasrs = betaind = betacon = matrix(NA, n.landmark.time, 4)
-betaseful = betasesrs = betaseind = betasecon = betaful
+betaful = betars = betaind = betacon = matrix(NA, n.landmark.time, 4)
+betaseful = betasers = betaseind = betasecon = betaful
 bHazful = bHazseful = aucful = bsful = rmseful = cvrgful = matrix(NA, n.landmark.time, length(horizon))
-bHazsrs = bHazsesrs = aucsrs = bssrs = rmsesrs = cvrgsrs = bHazful
+bHazrs  = bHazsers  = aucrs  = bsrs  = rmsers  = cvrgrs  = bHazful
 bHazind = bHazseind = aucind = bsind = rmseind = cvrgind = bHazful
 bHaz0con = bHaz0secon = bHaz1con = bHaz1secon = auccon = bscon = rmsecon = cvrgcon = bHazful
-survful = survsrs = survind = survcon = array(NA, dim=c(nrow(valdat[tj==0, ]), n.landmark.time, length(horizon)))
-survseful = survsesrs = survseind = survsecon = survful
+survful = survrs = survind = survcon = array(NA, dim=c(nrow(valdat[tj==0, ]), n.landmark.time, length(horizon)))
+survseful = survsers = survseind = survsecon = survful
 
 # Iterate over all landmark times
 for(jj in 1:n.landmark.time){
   # Create indicators for inclusion into the jj-th landmark analysis 
   ind.ful = fuldat[ , tj==landmark.time[jj]]
-  ind.srs = fuldat[ , tj==landmark.time[jj] & ind.ncc==TRUE & is.finite(wgt.srs) & max.T.case >= landmark.time[jj]]
+  ind.rs  = fuldat[ , tj==landmark.time[jj] & ind.ncc==TRUE & is.finite(wgt.rs ) & max.T.case >= landmark.time[jj]]
   ind.ind = fuldat[ , tj==landmark.time[jj] & ind.ncc==TRUE & is.finite(wgt.ind)]
   ind.con = nccdat[ , tj==landmark.time[jj]]
   
   nlm = sum(ind.ful)      # size of the full cohort landmark sample
-  nlmsrs = sum(ind.srs)   # size of the NCC landmark SRS sample (landmarking sampled risk sets)
+  nlmrs  = sum(ind.rs)   # size of the NCC landmark RS  sample (landmarking sampled risk sets)
   nlmind = sum(ind.ind)   # size of the NCC landmark IND sample (landmarking individuals)
 
   # Maximize the likelihoods
   fitful = coxph(Surv(T.resi, status) ~ Z0 + Z1 + Z2 + Z3, data=fuldat[ind.ful, ], ties="breslow")
-  fitsrs = coxph(Surv(T.resi, status) ~ Z0 + Z1 + Z2 + Z3, data=fuldat[ind.srs, ], ties="breslow", weights=wgt.srs)
+  fitrs  = coxph(Surv(T.resi, status) ~ Z0 + Z1 + Z2 + Z3, data=fuldat[ind.rs , ], ties="breslow", weights=wgt.rs)
   fitind = coxph(Surv(T.resi, status) ~ Z0 + Z1 + Z2 + Z3, data=fuldat[ind.ind, ], ties="breslow", weights=wgt.ind)
   fitcon = coxph(Surv(T.resi, case)   ~ Z0 + Z1 + Z2 + strata(matched.id), data=nccdat[ind.con, ], ties="breslow")
   
   # Beta
   betaful[jj, ] = beta.ful = fitful$coef
-  betasrs[jj, ] = beta.srs = fitsrs$coef
+  betars[ jj, ] = beta.rs  = fitrs$coef
   betaind[jj, ] = beta.ind = fitind$coef
   betacon[jj, 1:3] = beta.con = fitcon$coef
   
   # SE of beta
   ## IF-based SE of beta following Shin et al. (2020) for full cohort and IPW analyses
   dfbeta.ful = residuals(fitful, type="dfbeta") ### IF(beta)
-  dfbeta.srs = residuals(fitsrs, type="dfbeta")
+  dfbeta.rs  = residuals(fitrs , type="dfbeta")
   dfbeta.ind = residuals(fitind, type="dfbeta")
   
   betaseful[jj, ] = sqdg(crossprod(dfbeta.ful)*nlm/(nlm-1))
 
-  noncase.srs = fuldat[ind.srs, status==0]
-  jcov.srs = jointVP(fuldat[ind.srs, ], m=mctrl, wgtcol="wgt.srs") ## joint inclusion probability in the landmark SRS sample
-  omega = t(dfbeta.srs[noncase.srs, ]) %*% jcov.srs %*% dfbeta.srs[noncase.srs, ]
-  betasesrs[jj, ] = sqdg(crossprod(dfbeta.srs/sqrt(fuldat[ind.srs, wgt.srs]))*nlm/(nlm-1) + omega)
+  noncase.rs = fuldat[ind.rs, status==0]
+  jcov.rs  = jointVP(fuldat[ind.rs, ], m=mctrl, wgtcol="wgt.rs") ## joint inclusion probability in the landmark RS sample
+  omega = t(dfbeta.rs[noncase.rs, ]) %*% jcov.rs %*% dfbeta.rs[noncase.rs, ]
+  betasers[jj, ] = sqdg(crossprod(dfbeta.rs/sqrt(fuldat[ind.rs, wgt.rs]))*nlm/(nlm-1) + omega)
   
   noncase.ind = fuldat[ind.ind, status==0]
   jcov.ind = jointVP(fuldat[ind.ind, ], m=mctrl, wgtcol="wgt.ind") ## joint inclusion probability in the landmark IND sample
@@ -149,11 +149,11 @@ for(jj in 1:n.landmark.time){
   # cumulative baseline hazards and SEs
   ## Increments in baseline hazards and their influence functions
   failtime.ful = sort(fitful$y[fitful$y[ , 2]==1, 1])
-  failtime.srs = sort(fitsrs$y[fitsrs$y[ , 2]==1, 1])
+  failtime.rs  = sort(fitrs$y[ fitrs$y[  , 2]==1, 1])
   failtime.ind = sort(fitind$y[fitind$y[ , 2]==1, 1])
   
   order.ful = as.integer(names(failtime.ful))
-  order.srs = as.integer(names(failtime.srs))
+  order.rs  = as.integer(names(failtime.rs ))
   order.ind = as.integer(names(failtime.ind))
   
   bhaz.ful = dLambda0(as.matrix(fuldat[ind.ful, .(Z0, Z1, Z2, Z3)]), # Z matrix
@@ -169,10 +169,10 @@ for(jj in 1:n.landmark.time){
   ## This c++ function returns the estimated increments in cumulative baselines (dL0t) and 
   ## the associated influence functions (df_dL0t)
   
-  bhaz.srs = dLambda0(as.matrix(fuldat[ind.srs, .(Z0, Z1, Z2, Z3)]), 
-                      dfbeta.srs, beta.srs, failtime.srs, fuldat[ind.srs, T.resi], 
-                      fitsrs$weights, fitsrs$weights[fitsrs$y[, 2]==1], 
-                      order.srs, nlmsrs, fitsrs$nevent)
+  bhaz.rs  = dLambda0(as.matrix(fuldat[ind.rs, .(Z0, Z1, Z2, Z3)]), 
+                      dfbeta.rs, beta.rs, failtime.rs, fuldat[ind.rs, T.resi], 
+                      fitrs$weights, fitrs $weights[fitrs$y[, 2]==1], 
+                      order.rs , nlmrs, fitrs$nevent)
   
   bhaz.ind = dLambda0(as.matrix(fuldat[ind.ind, .(Z0, Z1, Z2, Z3)]), 
                       dfbeta.ind, beta.ind, failtime.ind, fuldat[ind.ind, T.resi], 
@@ -186,7 +186,7 @@ for(jj in 1:n.landmark.time){
   for(h in seq_along(horizon)){
     ## Estimate the cumulative baseline hazard
     bHazful[jj, h] = sum(bhaz.ful$dL0t[failtime.ful<=horizon[h]])
-    bHazsrs[jj, h] = sum(bhaz.srs$dL0t[failtime.srs<=horizon[h]])
+    bHazrs[ jj, h] = sum(bhaz.rs$dL0t[ failtime.rs <=horizon[h]])
     bHazind[jj, h] = sum(bhaz.ind$dL0t[failtime.ind<=horizon[h]])
     ## stratify by the matching variable Z3 for the conditional likelihood analysis
     bHaz0con[jj, h] = sum(bhaz.con[failtime<=horizon[h] & case==1 & Z3==0, bhazZ3])
@@ -194,13 +194,13 @@ for(jj in 1:n.landmark.time){
 
     ## IF-based SE for full cohort and IPW analyses   
     dfbHaz.ful = rowSums(bhaz.ful$df_dL0t[ , failtime.ful<=horizon[h]])
-    dfbHaz.srs = rowSums(bhaz.srs$df_dL0t[ , failtime.srs<=horizon[h]])
+    dfbHaz.rs  = rowSums(bhaz.rs$df_dL0t[  , failtime.rs <=horizon[h]])
     dfbHaz.ind = rowSums(bhaz.ind$df_dL0t[ , failtime.ind<=horizon[h]])
     
     bHazseful[jj, h] = sqrt(crossprod(dfbHaz.ful)*nlm/(nlm-1))
     
-    omega = t(dfbHaz.srs[noncase.srs]) %*% jcov.srs %*% dfbHaz.srs[noncase.srs]
-    bHazsesrs[jj, h] = sqrt(crossprod(dfbHaz.srs/sqrt(fuldat[ind.srs, wgt.srs]))*nlm/(nlm-1) + omega)
+    omega = t(dfbHaz.rs[noncase.rs]) %*% jcov.rs %*% dfbHaz.rs[noncase.rs]
+    bHazsers[jj, h] = sqrt(crossprod(dfbHaz.rs/sqrt(fuldat[ind.rs, wgt.rs]))*nlm/(nlm-1) + omega)
     
     omega = t(dfbHaz.ind[noncase.ind]) %*% jcov.ind %*% dfbHaz.ind[noncase.ind]
     bHazseind[jj, h] = sqrt(crossprod(dfbHaz.ind/sqrt(fuldat[ind.ind, wgt.ind]))*nlm/(nlm-1) + omega)
@@ -216,20 +216,20 @@ for(jj in 1:n.landmark.time){
     # predict residual survival for subjects in the validation dataset
     valcov = as.matrix(valdat[tj==landmark.time[jj], .(Z0, Z1, Z2, Z3)])
     surv.ful = c(exp(-bHazful[jj, h]*exp(valcov %*% beta.ful)))
-    surv.srs = c(exp(-bHazsrs[jj, h]*exp(valcov %*% beta.srs)))
+    surv.rs  = c(exp(-bHazrs[ jj, h]*exp(valcov %*% beta.rs)))
     surv.ind = c(exp(-bHazind[jj, h]*exp(valcov %*% beta.ind)))
     valZ3 = valcov[ , "Z3"]
     surv.con = c(exp(-((1-valZ3)*bHaz0con[jj, h] + valZ3*bHaz1con[jj, h])*exp(valcov[ , 1:3] %*% beta.con)))
     
     # SE of predictive residual survival probabilities
     dfsurv.ful = dfbeta.ful %*% t(valcov*surv.ful*log(surv.ful)) - dfbHaz.ful %*% t(surv.ful*exp(valcov %*% beta.ful))
-    dfsurv.srs = dfbeta.srs %*% t(valcov*surv.srs*log(surv.srs)) - dfbHaz.srs %*% t(surv.srs*exp(valcov %*% beta.srs))
+    dfsurv.rs  = dfbeta.rs  %*% t(valcov*surv.rs *log(surv.rs))  - dfbHaz.rs  %*% t(surv.rs *exp(valcov %*% beta.rs))
     dfsurv.ind = dfbeta.ind %*% t(valcov*surv.ind*log(surv.ind)) - dfbHaz.ind %*% t(surv.ind*exp(valcov %*% beta.ind))
     
     survse.ful = sqdg(crossprod(dfsurv.ful)*nlm/(nlm-1))
     
-    omega = t(dfsurv.srs[noncase.srs, ]) %*% jcov.srs %*% dfsurv.srs[noncase.srs, ]
-    survse.srs = sqdg(crossprod(dfsurv.srs/sqrt(fuldat[ind.srs, wgt.srs]))*nlm/(nlm-1) + omega)
+    omega = t(dfsurv.rs[noncase.rs, ]) %*% jcov.rs %*% dfsurv.rs[noncase.rs, ]
+    survse.rs = sqdg(crossprod(dfsurv.rs/sqrt(fuldat[ind.rs, wgt.rs]))*nlm/(nlm-1) + omega)
     
     omega = t(dfsurv.ind[noncase.ind, ]) %*% jcov.ind %*% dfsurv.ind[noncase.ind, ]
     survse.ind = sqdg(crossprod(dfsurv.ind/sqrt(fuldat[ind.ind, wgt.ind]))*nlm/(nlm-1) + omega)
@@ -244,12 +244,12 @@ for(jj in 1:n.landmark.time){
     # save predictions
     val.ind = valdat[tj==0, T.obs>=landmark.time[jj]]
     survful[val.ind, jj, h] = surv.ful
-    survsrs[val.ind, jj, h] = surv.srs
+    survrs[ val.ind, jj, h] = surv.rs
     survind[val.ind, jj, h] = surv.ind
     survcon[val.ind, jj, h] = surv.con
     
     survseful[val.ind, jj, h] = survse.ful
-    survsesrs[val.ind, jj, h] = survse.srs
+    survsers[ val.ind, jj, h] = survse.rs
     survseind[val.ind, jj, h] = survse.ind
     survsecon[val.ind, jj, h] = survse.con
     
@@ -257,23 +257,23 @@ for(jj in 1:n.landmark.time){
     surv.true = c(exp(-H_0_solve(horizon[h], jj)*exp(valcov %*% c(beta[jj, ], beta_cor[jj, ], 0.3))))
     True = as.numeric(valdat[tj==landmark.time[jj], T.resi] > horizon[h])
     ROCful = roc(response=True, predictor=surv.ful, quiet=TRUE)
-    ROCsrs = roc(response=True, predictor=surv.srs, quiet=TRUE)
+    ROCrs  = roc(response=True, predictor=surv.rs,  quiet=TRUE)
     ROCind = roc(response=True, predictor=surv.ind, quiet=TRUE)
     ROCcon = roc(response=True, predictor=surv.con, quiet=TRUE) 
     aucful[jj, h] = ROCful$auc
-    aucsrs[jj, h] = ROCsrs$auc
+    aucrs[ jj, h] = ROCrs$auc
     aucind[jj, h] = ROCind$auc
     auccon[jj, h] = ROCcon$auc
     bsful[jj, h] = mean((True - surv.ful)^2)
-    bssrs[jj, h] = mean((True - surv.srs)^2)
+    bsrs[ jj, h] = mean((True - surv.rs)^2)
     bsind[jj, h] = mean((True - surv.ind)^2)
     bscon[jj, h] = mean((True - surv.con)^2)
     rmseful[jj, h] = sqrt(mean((surv.ful - surv.true)^2))
-    rmsesrs[jj, h] = sqrt(mean((surv.srs - surv.true)^2))
+    rmsers[ jj, h] = sqrt(mean((surv.rs -  surv.true)^2))
     rmseind[jj, h] = sqrt(mean((surv.ind - surv.true)^2))
     rmsecon[jj, h] = sqrt(mean((surv.con - surv.true)^2))
     cvrgful[jj, h] = mean((surv.ful - qnorm(0.975)*survse.ful < surv.true) & (surv.true < surv.ful + qnorm(0.975)*survse.ful))
-    cvrgsrs[jj, h] = mean((surv.srs - qnorm(0.975)*survse.srs < surv.true) & (surv.true < surv.srs + qnorm(0.975)*survse.srs))
+    cvrgrs[ jj, h] = mean((surv.rs  - qnorm(0.975)*survse.rs  < surv.true) & (surv.true < surv.rs  + qnorm(0.975)*survse.rs))
     cvrgind[jj, h] = mean((surv.ind - qnorm(0.975)*survse.ind < surv.true) & (surv.true < surv.ind + qnorm(0.975)*survse.ind))
     cvrgcon[jj, h] = mean((surv.con - qnorm(0.975)*survse.con < surv.true) & (surv.true < surv.con + qnorm(0.975)*survse.con))
   }
