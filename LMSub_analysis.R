@@ -2,7 +2,6 @@
 # Purpose: perform dynamic prediction by landmarking with NCC and full cohort data. 
 # Author: Yen Chang
 # Creation Date: 3/22/25
-# Author: Yen Chang
 ####################################################################################
 
 source('LMSub_functions.R')

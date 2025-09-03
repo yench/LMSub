@@ -4,7 +4,6 @@
 #          models.
 # Author: Yen Chang
 # Creation Date: 3/22/25
-# Author: Yen Chang
 ####################################################################################
 
 # functions to compute joint inclusion probabilities
